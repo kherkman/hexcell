@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <title>Hex Grid Pro - Command Mode</title>
+    <style>
+        :root {
+            --bg-body: #1e1e1e;
+            --bg-panel: #2d2d2d;
+            --text-main: #e0e0e0;
+            --text-muted: #aaaaaa;
+            --border-panel: #444444;
+            --accent-blue: #007acc;
+            --accent-green: #28a745;
+            --accent-red: #d32f2f;
+            --accent-orange: #ff9800;
+            --accent-purple: #8e44ad;
+            --input-bg: #3c3c3c;
+            --input-border: #555555;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            padding: 20px;
+            margin: 0;
+            user-select: none;
+            /* Estetään selaimeen oletus-scrollaus nuolilla jotta canvas navigointi on sujuvaa */
+            overflow-y: auto; 
+        }
+
+        h1 { margin-top: 0; color: var(--text-main); margin-bottom: 15px; font-weight: 300; letter-spacing: 1px; }
+
+        /* --- Paneelit --- */
+        .bar {
+            width: 100%;
+            max-width: 1100px;
+            background: var(--bg-panel);
+            padding: 10px 15px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            box-sizing: border-box;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            gap: 12px;
+            border: 1px solid var(--border-panel);
+        }
+
+        .top-bar { justify-content: space-between; }
+        .formula-bar { gap: 10px; }
+        .style-bar { gap: 15px; font-size: 13px; color: var(--text-muted); }
+
+        /* --- Kontrollit --- */
+        .cell-indicator {
+            font-weight: bold;
+            color: #fff;
+            min-width: 60px;
+            text-align: center;
+            background: var(--input-bg);
+            padding: 7px;
+            border-radius: 4px;
+            border: 1px solid var(--input-border);
+            font-family: monospace;
+        }
+
+        #formulaInput {
+            flex-grow: 1;
+            padding: 8px 10px;
+            font-size: 15px;
+            background-color: var(--input-bg);
+            color: #fff;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            outline: none;
+        }
+        #formulaInput:focus { border-color: var(--accent-blue); background-color: #444; }
+
+        .style-group { display: flex; align-items: center; gap: 6px; }
+        .style-group label { font-weight: 600; font-size: 12px; color: var(--text-muted); }
+
+        input[type="color"] { border: none; width: 30px; height: 30px; cursor: pointer; padding: 0; background: none; }
+        
+        select, input[type="number"], input[type="text"] { 
+            padding: 5px; 
+            background-color: var(--input-bg);
+            color: var(--text-main);
+            border: 1px solid var(--input-border); 
+            border-radius: 4px; 
+        }
+
+        .divider { width: 1px; height: 25px; background: var(--border-panel); margin: 0 5px; }
+
+        /* --- Napit --- */
+        button {
+            padding: 7px 14px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: none;
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        button:hover { filter: brightness(110%); transform: translateY(-1px); }
+        button:active { transform: translateY(0); }
+        button:disabled { background-color: #555; cursor: not-allowed; transform: none; color: #aaa; }
+
+        .btn-blue { background-color: var(--accent-blue); }
+        .btn-green { background-color: var(--accent-green); }
+        .btn-purple { background-color: var(--accent-purple); }
+        .btn-orange { background-color: var(--accent-orange); color: #222; }
+        .btn-red { background-color: var(--accent-red); }
+        .btn-gray { background-color: #555; }
+
+        /* --- Canvas --- */
+        #hexCanvas {
+            background-color: #222;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            cursor: crosshair;
+            border-radius: 4px;
+            outline: none; /* Poista sininen focus-reuna */
+        }
+
+        .instructions {
+            margin-top: 15px;
+            font-size: 13px;
+            color: var(--text-muted);
+            max-width: 1100px;
+            background: var(--bg-panel);
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid var(--border-panel);
+            line-height: 1.6;
+        }
+        
+        code {
+            background: rgba(255,255,255,0.1);
+            padding: 2px 5px;
+            border-radius: 3px;
+            color: #fff;
+            font-family: monospace;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Hex Grid Pro Editor</h1>
+
+    <!-- 1. Tiedosto ja Asetukset -->
+    <div class="bar top-bar">
+        <div style="display:flex; gap:15px; align-items:center;">
+            <div class="style-group">
+                <label>Teema:</label>
+                <select id="themeSelect" onchange="changeTheme(this.value)">
+                    <option value="light">Light</option>
+                    <option value="dark" selected>Dark</option>
+                </select>
+            </div>
+            <div class="style-group">
+                <label>Reuna:</label>
+                <input type="color" id="borderColorPicker" value="#444444" onchange="setGlobalBorder(this.value)">
+            </div>
+        </div>
+
+        <div style="display:flex; gap:8px;">
+            <button class="btn-green" onclick="saveToJS()">Tallenna JS</button>
+            <button class="btn-blue" onclick="document.getElementById('jsInput').click()">Lataa JS</button>
+            <div class="divider"></div>
+            <button class="btn-purple" onclick="exportToCSV()">Vienti CSV</button>
+            <button class="btn-purple" onclick="document.getElementById('csvInput').click()">Tuonti CSV</button>
+            <div class="divider"></div>
+            <button class="btn-orange" onclick="saveToJPG()">Tallenna JPG</button>
+            
+            <!-- Piilotetut inputit -->
+            <input type="file" id="jsInput" accept=".js,.json" style="display: none;" onchange="loadFromJS(this)">
+            <input type="file" id="csvInput" accept=".csv,.txt" style="display: none;" onchange="importFromCSV(this)">
+        </div>
+    </div>
+
+    <!-- 2. Kaavarivi -->
+    <div class="bar formula-bar">
+        <div class="cell-indicator" id="selectedCellDisplay">---</div>
+        <input type="text" id="formulaInput" placeholder="Paina 'F' muokataksesi..." disabled>
+        <button onclick="applyFormula()" class="btn-blue">OK</button>
+        <button onclick="undo()" class="btn-gray" title="Kumoa (Z)">↶ Undo</button>
+        
+        <div class="divider"></div>
+        
+        <button onclick="copySelection()" class="btn-gray" title="Kopioi (C)">COPY</button>
+        <button onclick="pasteSelection()" class="btn-gray" title="Liitä (V)">PASTE</button>
+        <button onclick="moveSelection()" class="btn-gray" title="Siirrä (X)">MOVE</button>
+        <button onclick="eraseSelection()" class="btn-red" title="Tyhjennä (E)">ERASE</button>
+    </div>
+
+    <!-- 3. Tyylipalkki -->
+    <div class="bar style-bar">
+        <div class="style-group">
+            <label>Tausta:</label>
+            <input type="color" id="bgColorPicker" value="#ffffff" onchange="updateStyle('bg', this.value)">
+        </div>
+        <div class="style-group">
+            <label>Teksti:</label>
+            <input type="color" id="textColorPicker" value="#000000" onchange="updateStyle('color', this.value)">
+        </div>
+        <div class="style-group">
+            <label>Fontti:</label>
+            <select id="fontFamilySelect" onchange="updateStyle('font', this.value)">
+                <option value="Arial">Arial</option>
+                <option value="Verdana">Verdana</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Courier New">Courier New</option>
+                <option value="Segoe UI">Segoe UI</option>
+            </select>
+        </div>
+        <div class="style-group">
+            <label>Koko:</label>
+            <input type="number" id="fontSizeInput" value="13" min="8" max="40" style="width: 50px;" onchange="updateStyle('size', this.value)">
+        </div>
+        <div class="style-group">
+            <label>Des.:</label>
+            <input type="number" id="decimalsInput" placeholder="Auto" min="0" max="10" style="width: 45px;" onchange="updateStyle('decimals', this.value)">
+        </div>
+        
+        <div class="divider"></div>
+
+        <!-- Kuvan hallinta -->
+        <div class="style-group">
+            <label>Kuva:</label>
+            <button class="btn-gray" style="padding:4px 8px; font-size:11px;" onclick="document.getElementById('imgInput').click()">Valitse...</button>
+            <input type="file" id="imgInput" accept="image/*" style="display:none" onchange="addImageToCell(this)">
+        </div>
+        <div class="style-group">
+            <label>Zoom:</label>
+            <input type="number" id="imgScaleInput" value="1.0" step="0.1" style="width: 50px;" onchange="updateImageScale(this.value)">
+        </div>
+
+        <button onclick="resetStyle()" class="btn-gray" style="margin-left:auto;">Nollaa</button>
+    </div>
+
+    <canvas id="hexCanvas" width="1100" height="650" tabindex="1"></canvas>
+
+    <div class="instructions">
+        <strong>Navigointi:</strong> <code>WASD</code> tai <code>Nuolet</code> liikkuu. <code>F</code> aktivoi kaavan syötön.
+        <br>
+        <strong>Komennot:</strong> <code>C</code> Copy, <code>V</code> Paste, <code>X</code> Move, <code>Z</code> Undo, <code>E</code> Erase.
+        <br>
+        <strong>Viittaukset:</strong> <code>=[$2, 3]</code>. <strong>Potenssi:</strong> <code>=2^3</code>. <strong>IF:</strong> <code>=IF([2,2]>10, "Iso", "Pieni")</code>.
+    </div>
+
+<script>
+// --- GLOBAALIT MUUTTUJAT ---
+let canvas, ctx, inputField, cellDisplay;
+let hexRadius = 30, hexHeight, xOffset, yOffset;
+const rows = 15, cols = 22;
+
+// Data: { "2,3": { value: "...", style: { ... }, image: { name: "a.jpg", scale: 1.0 } } }
+let hexData = {}; 
+
+// Kuvien välimuisti
+let loadedImages = {};
+
+// Historia (Undo)
+let historyStack = [];
+
+// Valinta
+let selectionStart = null;
+let selectionEnd = null;
+let isDragging = false;
+
+// Leikepöytä
+let internalClipboard = null; 
+
+// Asetukset & Teemat
+const defaultStyle = {
+    bg: null,
+    color: null,
+    font: "Segoe UI",
+    size: 13,
+    decimals: null
+};
+
+const themes = {
+    light: {
+        bg: "#f0f0f0",
+        cellBg: "#ffffff",
+        text: "#000000",
+        border: "#cccccc",
+        selectBg: "rgba(0, 122, 204, 0.2)",
+        selectBorder: "#007acc"
+    },
+    dark: {
+        bg: "#222222",
+        cellBg: "#2d2d2d",
+        text: "#eeeeee",
+        border: "#444444",
+        selectBg: "rgba(255, 152, 0, 0.2)",
+        selectBorder: "#ff9800"
+    }
+};
+
+let currentTheme = 'dark';
+let globalBorderColor = null;
+
+// --- IF FUNKTIO ---
+function IF(condition, trueVal, falseVal) {
+    return condition ? trueVal : falseVal;
+}
+
+// --- ALUSTUS ---
+window.addEventListener('load', function() {
+    try {
+        initApp();
+    } catch (e) {
+        alert("Virhe: " + e.message);
+    }
+});
+
+function initApp() {
+    canvas = document.getElementById('hexCanvas');
+    if (!canvas) throw new Error("Canvas puuttuu");
+    ctx = canvas.getContext('2d');
+    inputField = document.getElementById('formulaInput');
+    cellDisplay = document.getElementById('selectedCellDisplay');
+
+    hexHeight = Math.sqrt(3) * hexRadius;
+    xOffset = hexRadius * 1.5;
+    yOffset = hexHeight;
+
+    canvas.addEventListener('mousedown', handleMouseDown);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    
+    // Kuunnellaan keydownia koko ikkunassa
+    window.addEventListener('keydown', handleKeyDown);
+
+    inputField.addEventListener('keydown', (e) => { 
+        e.stopPropagation(); // Estää komentojen vuotamisen canvasille kirjoittaessa
+        if (e.key === 'Enter') applyFormula(); 
+    });
+
+    drawGrid();
+}
+
+// --- UNDO JÄRJESTELMÄ ---
+
+function saveState() {
+    if (historyStack.length > 50) historyStack.shift();
+    historyStack.push(JSON.stringify(hexData));
+}
+
+function undo() {
+    if (historyStack.length === 0) return;
+    const previousStateJSON = historyStack.pop();
+    hexData = JSON.parse(previousStateJSON);
+    preloadImagesFromData();
+    drawGrid();
+    if (selectionStart) updateUI(false); // false = älä fokuso inputtiin
+}
+
+// --- PIIRTÄMINEN ---
+
+function drawHexagon(r, c, x, y, isSelected) {
+    const theme = themes[currentTheme];
+
+    ctx.save(); 
+
+    // Polku
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = 2 * Math.PI / 6 * i;
+        ctx.lineTo(x + hexRadius * Math.cos(angle), y + hexRadius * Math.sin(angle));
+    }
+    ctx.closePath();
+
+    // Data
+    const key = `${c},${r}`;
+    const cell = hexData[key];
+    const style = (cell && cell.style) ? cell.style : defaultStyle;
+
+    // Täyttö
+    if (isSelected) {
+        ctx.fillStyle = theme.selectBg;
+    } else {
+        ctx.fillStyle = style.bg || theme.cellBg;
+    }
+    ctx.fill();
+
+    // Kuva (Clipping)
+    if (cell && cell.image && cell.image.name) {
+        const imgObj = loadedImages[cell.image.name];
+        if (imgObj && imgObj.complete) {
+            ctx.clip(); 
+            const scale = cell.image.scale || 1.0;
+            const drawW = (hexRadius * 2) * scale;
+            const drawH = (hexRadius * 2) * (imgObj.height / imgObj.width) * scale;
+            ctx.drawImage(imgObj, x - drawW/2, y - drawH/2, drawW, drawH);
+        }
+    }
+
+    ctx.restore(); 
+
+    // Reuna
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+        const angle = 2 * Math.PI / 6 * i;
+        ctx.lineTo(x + hexRadius * Math.cos(angle), y + hexRadius * Math.sin(angle));
+    }
+    ctx.closePath();
+
+    if (isSelected) {
+        ctx.strokeStyle = theme.selectBorder;
+        ctx.lineWidth = 3;
+    } else {
+        ctx.strokeStyle = globalBorderColor || theme.border;
+        ctx.lineWidth = 1;
+    }
+    ctx.stroke();
+
+    // Teksti
+    ctx.fillStyle = currentTheme === 'dark' ? "#666" : "#aaa";
+    ctx.font = "9px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`${c},${r}`, x, y + hexRadius - 4);
+
+    if (cell && cell.value) {
+        let val = calculateValue(cell.value);
+        
+        ctx.fillStyle = style.color || theme.text;
+        const fSize = style.size || defaultStyle.size;
+        const fName = style.font || defaultStyle.font;
+        ctx.font = `bold ${fSize}px "${fName}"`;
+        ctx.textBaseline = "middle";
+        
+        if (typeof val === 'number') {
+            if (style.decimals !== null && style.decimals !== "") {
+                val = val.toFixed(parseInt(style.decimals));
+            } else {
+                val = parseFloat(val.toFixed(3));
+            }
+        }
+        ctx.fillText(val, x, y);
+    }
+}
+
+function drawGrid() {
+    const theme = themes[currentTheme];
+    ctx.fillStyle = theme.bg;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    let minC = -1, maxC = -1, minR = -1, maxR = -1;
+    if (selectionStart && selectionEnd) {
+        minC = Math.min(selectionStart.c, selectionEnd.c);
+        maxC = Math.max(selectionStart.c, selectionEnd.c);
+        minR = Math.min(selectionStart.r, selectionEnd.r);
+        maxR = Math.max(selectionStart.r, selectionEnd.r);
+    }
+
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            let x = hexRadius + c * xOffset + 40;
+            let y = hexRadius + r * yOffset + 40;
+            if (c % 2 !== 0) y += yOffset / 2;
+
+            const isSelected = (c >= minC && c <= maxC && r >= minR && r <= maxR);
+            drawHexagon(r, c, x, y, isSelected);
+        }
+    }
+}
+
+// --- KUVIEN LATAUS ---
+function preloadImagesFromData() {
+    Object.values(hexData).forEach(cell => {
+        if (cell.image && cell.image.name) {
+            const name = cell.image.name;
+            if (!loadedImages[name]) {
+                const img = new Image();
+                img.src = "./" + name;
+                img.onload = () => drawGrid();
+                loadedImages[name] = img;
+            }
+        }
+    });
+}
+
+function addImageToCell(input) {
+    if (!selectionStart || !input.files || !input.files[0]) return;
+    saveState(); 
+    
+    const file = input.files[0];
+    const fileName = file.name;
+    const key = `${selectionStart.c},${selectionStart.r}`;
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.src = objectUrl;
+    img.onload = () => {
+        drawGrid();
+        loadedImages[fileName] = img; 
+    };
+
+    if (!hexData[key]) hexData[key] = { value: "", style: {...defaultStyle} };
+    hexData[key].image = { name: fileName, scale: 1.0 };
+    
+    input.value = '';
+    updateUI(false);
+    drawGrid();
+}
+
+function updateImageScale(val) {
+    if (!selectionStart) return;
+    saveState();
+    const key = `${selectionStart.c},${selectionStart.r}`;
+    if (hexData[key] && hexData[key].image) {
+        hexData[key].image.scale = parseFloat(val);
+        drawGrid();
+    }
+}
+
+// --- LASKENTA ---
+function getRawValue(key) {
+    const data = hexData[key];
+    if (!data) return "";
+    return typeof data === 'object' ? data.value : data; 
+}
+
+function calculateValue(rawValue, depth = 0) {
+    if (depth > 20) return "Loop";
+    if (typeof rawValue !== 'string') return rawValue;
+    if (!rawValue.startsWith('=')) {
+        return isNaN(Number(rawValue)) ? rawValue : Number(rawValue);
+    }
+
+    let formula = rawValue.substring(1);
+    formula = formula.replace(/\^/g, '**');
+
+    const resolved = formula.replace(/\[(\$?)(\d+),\s*(\$?)(\d+)\]/g, (match, lockC, c, lockR, r) => {
+        const val = calculateValue(getRawValue(`${c},${r}`), depth + 1);
+        return isNaN(val) ? 0 : val;
+    });
+
+    try {
+        return eval(resolved);
+    } catch (e) {
+        return "ERR";
+    }
+}
+
+// --- INTERAKTIO ---
+
+function getHexAt(mouseX, mouseY) {
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            let x = hexRadius + c * xOffset + 40;
+            let y = hexRadius + r * yOffset + 40;
+            if (c % 2 !== 0) y += yOffset / 2;
+            if (Math.sqrt((mouseX - x)**2 + (mouseY - y)**2) < hexRadius * 0.9) return {c, r};
+        }
+    }
+    return null;
+}
+
+function handleMouseDown(e) {
+    const rect = canvas.getBoundingClientRect();
+    const clicked = getHexAt(e.clientX - rect.left, e.clientY - rect.top);
+
+    if (!clicked) return;
+
+    // Jos ollaan inputissa ja lisätään viittausta
+    if (document.activeElement === inputField && inputField.value.startsWith('=')) {
+        e.preventDefault(); 
+        const ref = `[${clicked.c},${clicked.r}]`;
+        const start = inputField.selectionStart;
+        const end = inputField.selectionEnd;
+        const val = inputField.value;
+        inputField.value = val.substring(0, start) + ref + val.substring(end);
+        inputField.focus();
+        inputField.setSelectionRange(start + ref.length, start + ref.length);
+        return;
+    }
+
+    isDragging = true;
+    selectionStart = clicked;
+    selectionEnd = clicked;
+    
+    // TÄRKEÄÄ: Hiirellä klikkaaminen ei enää pakota fokusta inputtiin,
+    // jotta pikanäppäimet (c, v, x...) toimivat heti.
+    // Käyttäjä painaa 'F' jos haluaa kirjoittaa.
+    updateUI(false); 
+    drawGrid();
+}
+
+function handleMouseMove(e) {
+    if (!isDragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const hovered = getHexAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (hovered) {
+        selectionEnd = hovered;
+        drawGrid();
+    }
+}
+
+function handleMouseUp(e) {
+    isDragging = false;
+}
+
+// --- UUSI NÄPPÄINLOGIIKKA (WASD + Shortcuts) ---
+
+function handleKeyDown(e) {
+    const isInputActive = document.activeElement === inputField;
+
+    // 1. Jos ollaan syöttötilassa (Input on aktiivinen)
+    if (isInputActive) {
+        // Sallitaan normaali kirjoitus. 
+        // Estetään vain tapahtumien valuminen jos tarpeen.
+        // Enter hoidetaan omassa listenerissä.
+        return;
+    }
+
+    // 2. Komentotila (Input EI ole aktiivinen)
+    const key = e.key.toLowerCase();
+
+    // --- "F" -> Siirry kaavan syöttöön ---
+    if (key === 'f') {
+        e.preventDefault();
+        if (selectionStart) {
+            inputField.disabled = false;
+            inputField.focus();
+        }
+        return;
+    }
+
+    // --- Pikanäppäimet (C, V, X, Z, E) ---
+    if (key === 'c') { copySelection(); return; }
+    if (key === 'v') { pasteSelection(); return; }
+    if (key === 'z') { undo(); return; }
+    if (key === 'e') { eraseSelection(); return; }
+    if (key === 'x') { moveSelection(); return; } // Move = Copy + Erase
+
+    // --- Navigointi (WASD + Nuolet) ---
+    if (!selectionStart) return;
+
+    let c = selectionStart.c;
+    let r = selectionStart.r;
+    let moved = false;
+
+    if (key === 'arrowup' || key === 'w') { r--; moved = true; }
+    if (key === 'arrowdown' || key === 's') { r++; moved = true; }
+    if (key === 'arrowleft' || key === 'a') { c--; moved = true; }
+    if (key === 'arrowright' || key === 'd') { c++; moved = true; }
+
+    if (moved) {
+        // Estä sivun scrollaus
+        e.preventDefault();
+
+        // Rajatarkistus
+        if (c >= 0 && c < cols && r >= 0 && r < rows) {
+            selectionStart = {c, r};
+            selectionEnd = {c, r}; // Resetoi aluevalinta liikkuessa
+            
+            // TÄRKEÄÄ: Passataan false, jotta fokus EI mene inputtiin.
+            // Näin käyttäjä voi jatkaa liikkumista.
+            updateUI(false); 
+            drawGrid();
+        }
+    }
+}
+
+// --- UI PÄIVITYS ---
+
+function updateUI(shouldFocus = false) {
+    if (!selectionStart) {
+        cellDisplay.textContent = "---";
+        inputField.disabled = true;
+        inputField.value = "";
+        return;
+    }
+
+    cellDisplay.textContent = `[${selectionStart.c},${selectionStart.r}]`;
+    inputField.disabled = false;
+
+    const key = `${selectionStart.c},${selectionStart.r}`;
+    const cell = hexData[key];
+    const rawVal = cell ? cell.value : "";
+    inputField.value = rawVal;
+    
+    // Jos pyydetty (esim painettu F), siirrä fokus
+    if (shouldFocus) {
+        inputField.focus();
+    } else {
+        // Varmista että fokus on poissa inputista jotta näppäinkomennot toimii
+        inputField.blur();
+        // Kohdista fokus kankaaseen tai bodyyn, jotta keydown toimii
+        canvas.focus();
+    }
+
+    // Päivitä tyylikontrollit
+    const style = (cell && cell.style) ? cell.style : defaultStyle;
+    document.getElementById('bgColorPicker').value = style.bg || "#ffffff";
+    document.getElementById('textColorPicker').value = style.color || "#000000";
+    document.getElementById('fontFamilySelect').value = style.font || "Segoe UI";
+    document.getElementById('fontSizeInput').value = style.size || 13;
+    document.getElementById('decimalsInput').value = style.decimals !== null ? style.decimals : "";
+
+    if (cell && cell.image) {
+        document.getElementById('imgScaleInput').value = cell.image.scale || 1.0;
+    } else {
+        document.getElementById('imgScaleInput').value = 1.0;
+    }
+}
+
+function applyFormula() {
+    if (!selectionStart) return;
+    saveState(); 
+
+    const key = `${selectionStart.c},${selectionStart.r}`;
+    const val = inputField.value.trim();
+
+    if (!hexData[key]) hexData[key] = { value: "", style: {...defaultStyle} };
+    hexData[key].value = val;
+    
+    // Kun painetaan Enter, poistutaan syöttötilasta jotta voi taas liikkua
+    updateUI(false); 
+    drawGrid();
+}
+
+function changeTheme(themeName) {
+    currentTheme = themeName;
+    drawGrid();
+}
+
+function setGlobalBorder(color) {
+    globalBorderColor = color;
+    drawGrid();
+}
+
+function updateStyle(prop, val) {
+    if (!selectionStart || !selectionEnd) return;
+    saveState(); 
+
+    const minC = Math.min(selectionStart.c, selectionEnd.c);
+    const maxC = Math.max(selectionStart.c, selectionEnd.c);
+    const minR = Math.min(selectionStart.r, selectionEnd.r);
+    const maxR = Math.max(selectionStart.r, selectionEnd.r);
+
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            const key = `${c},${r}`;
+            if (!hexData[key]) hexData[key] = { value: "", style: {...defaultStyle} };
+            if (!hexData[key].style) hexData[key].style = {...defaultStyle};
+            if (val === "") val = null;
+            hexData[key].style[prop] = val;
+        }
+    }
+    drawGrid();
+}
+
+function resetStyle() {
+    if (!selectionStart) return;
+    saveState();
+    updateStyle('bg', null);
+    updateStyle('color', null);
+    updateStyle('font', "Segoe UI");
+    updateStyle('size', 13);
+    updateStyle('decimals', null);
+    const key = `${selectionStart.c},${selectionStart.r}`;
+    if (hexData[key] && hexData[key].image) delete hexData[key].image;
+    updateUI(false);
+    drawGrid();
+}
+
+// --- COPY / PASTE / MOVE / ERASE ---
+
+function copySelection() {
+    if (!selectionStart || !selectionEnd) return;
+    const minC = Math.min(selectionStart.c, selectionEnd.c);
+    const minR = Math.min(selectionStart.r, selectionEnd.r);
+    const maxC = Math.max(selectionStart.c, selectionEnd.c);
+    const maxR = Math.max(selectionStart.r, selectionEnd.r);
+
+    internalClipboard = {
+        originC: minC,
+        originR: minR,
+        cells: []
+    };
+
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            const key = `${c},${r}`;
+            if (hexData[key]) {
+                internalClipboard.cells.push({
+                    absC: c, 
+                    absR: r,
+                    data: JSON.parse(JSON.stringify(hexData[key]))
+                });
+            }
+        }
+    }
+    // Visuaalinen palaute
+    const originalText = cellDisplay.textContent;
+    cellDisplay.style.background = "var(--accent-purple)";
+    cellDisplay.textContent = "COPIED";
+    setTimeout(() => {
+        cellDisplay.textContent = originalText;
+        cellDisplay.style.background = "var(--input-bg)";
+    }, 800);
+}
+
+function pasteSelection() {
+    if (!selectionStart || !internalClipboard) return;
+    saveState();
+
+    const deltaC = selectionStart.c - internalClipboard.originC;
+    const deltaR = selectionStart.r - internalClipboard.originR;
+
+    internalClipboard.cells.forEach(item => {
+        const newC = item.absC + deltaC;
+        const newR = item.absR + deltaR;
+
+        if (newC >= 0 && newC < cols && newR >= 0 && newR < rows) {
+            let newData = JSON.parse(JSON.stringify(item.data));
+            
+            // Kaavojen päivitys
+            if (typeof newData.value === 'string' && newData.value.startsWith('=')) {
+                newData.value = newData.value.replace(/\[(\$?)(\d+),\s*(\$?)(\d+)\]/g, (match, lockC, cStr, lockR, rStr) => {
+                    const oldRefC = parseInt(cStr);
+                    const oldRefR = parseInt(rStr);
+                    const finalC = (lockC === '$') ? oldRefC : oldRefC + deltaC;
+                    const finalR = (lockR === '$') ? oldRefR : oldRefR + deltaR;
+                    return `[${lockC}${finalC},${lockR}${finalR}]`;
+                });
+            }
+
+            hexData[`${newC},${newR}`] = newData;
+            
+            if (newData.image && newData.image.name && !loadedImages[newData.image.name]) {
+                 const img = new Image();
+                 img.src = "./" + newData.image.name;
+                 loadedImages[newData.image.name] = img;
+            }
+        }
+    });
+    drawGrid();
+}
+
+function eraseSelection() {
+    if (!selectionStart || !selectionEnd) return;
+    saveState();
+    
+    const minC = Math.min(selectionStart.c, selectionEnd.c);
+    const maxC = Math.max(selectionStart.c, selectionEnd.c);
+    const minR = Math.min(selectionStart.r, selectionEnd.r);
+    const maxR = Math.max(selectionStart.r, selectionEnd.r);
+
+    for (let r = minR; r <= maxR; r++) {
+        for (let c = minC; c <= maxC; c++) {
+            const key = `${c},${r}`;
+            if (hexData[key]) delete hexData[key];
+        }
+    }
+    drawGrid();
+    inputField.value = "";
+}
+
+function moveSelection() {
+    // Move on yksinkertaisesti Copy + Erase
+    if (!selectionStart || !selectionEnd) return;
+    copySelection();
+    eraseSelection();
+}
+
+// --- TIEDOSTOT ---
+
+function exportToCSV() {
+    let maxC = 0, maxR = 0;
+    Object.keys(hexData).forEach(key => {
+        const parts = key.split(',');
+        const c = parseInt(parts[0]);
+        const r = parseInt(parts[1]);
+        if (c > maxC) maxC = c;
+        if (r > maxR) maxR = r;
+    });
+
+    let csvContent = "";
+    for (let r = 0; r <= maxR; r++) {
+        let rowData = [];
+        for (let c = 0; c <= maxC; c++) {
+            const val = getRawValue(`${c},${r}`);
+            let strVal = String(val).replace(/"/g, '""');
+            if (strVal.includes(',') || strVal.includes('"') || strVal.includes('\n')) {
+                strVal = `"${strVal}"`;
+            }
+            rowData.push(strVal);
+        }
+        csvContent += rowData.join(",") + "\n";
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "hex_grid.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+function importFromCSV(input) {
+    const file = input.files[0];
+    if (!file) return;
+    saveState();
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        const text = e.target.result;
+        const lines = text.split(/\r\n|\n/);
+        
+        lines.forEach((line, r) => {
+            if (r >= rows) return;
+            if (line.trim() === "") return;
+            const cells = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            
+            cells.forEach((cellRaw, c) => {
+                if (c >= cols) return;
+                let val = cellRaw.trim();
+                if (val.startsWith('"') && val.endsWith('"')) {
+                    val = val.substring(1, val.length - 1).replace(/""/g, '"');
+                }
+                if (val !== "") {
+                    const key = `${c},${r}`;
+                    const oldStyle = (hexData[key] && hexData[key].style) ? hexData[key].style : {...defaultStyle};
+                    hexData[key] = { value: val, style: oldStyle };
+                }
+            });
+        });
+
+        drawGrid();
+        input.value = '';
+    };
+    reader.readAsText(file);
+}
+
+function saveToJPG() {
+    const link = document.createElement('a');
+    link.download = 'hex_table.jpg';
+    link.href = canvas.toDataURL('image/jpeg', 0.9);
+    link.click();
+}
+
+window.saveToJS = function() {
+    const json = JSON.stringify(hexData, null, 2);
+    const content = `var savedHexData = ${json};`;
+    const blob = new Blob([content], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = "hex_project.js";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
+window.loadFromJS = function(input) {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const txt = e.target.result;
+            let jsonStr = txt;
+            const start = txt.indexOf('{');
+            const end = txt.lastIndexOf('}');
+            if (start !== -1 && end !== -1) jsonStr = txt.substring(start, end+1);
+            
+            const loadedData = JSON.parse(jsonStr);
+            for (let key in loadedData) {
+                if (typeof loadedData[key] !== 'object') {
+                    loadedData[key] = { value: loadedData[key], style: { ...defaultStyle } };
+                }
+            }
+
+            hexData = loadedData;
+            preloadImagesFromData();
+            selectionStart = null; selectionEnd = null;
+            inputField.value = ""; inputField.disabled = true;
+            cellDisplay.textContent = "---";
+            historyStack = [];
+            
+            drawGrid();
+        } catch (err) {
+            alert("Virhe ladattaessa: " + err.message);
+        }
+        input.value = '';
+    };
+    reader.readAsText(file);
+};
+
+</script>
+</body>
+</html>
